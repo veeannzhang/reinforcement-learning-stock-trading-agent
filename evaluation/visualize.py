@@ -1,0 +1,114 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+def plot_trades_on_price_from_backtest(
+    backtest_df: pd.DataFrame,
+    ticker: str,
+    dates: pd.Series | None = None,
+    figsize=(12, 6),
+    size_scale: float = 10.0,
+):
+    """
+    Plot the price of a single stock from `run_backtest` output and overlay
+    inferred buy/sell trades.
+
+    Parameters
+    ----------
+    backtest_df : pd.DataFrame
+        Output of `run_backtest`, with columns:
+        ['cash', 'price_<tic1>', ..., 'shares_<tic1>', ...].
+    ticker : str
+        The single ticker symbol to plot (must match env.tic_list entry).
+    dates : pd.Series or array-like, optional
+        Optional dates corresponding to each row of backtest_df.
+        If None, the DataFrame index is used (e.g., step number).
+    figsize : tuple
+        Figure size passed to matplotlib.
+    size_scale : float
+        Multiplier for marker size based on absolute traded shares.
+    """
+
+    df = backtest_df.copy()
+
+    price_col = f"price_{ticker}"
+    shares_col = f"shares_{ticker}"
+
+    # Create a date column from provided dates or fallback to index
+    if dates is not None:
+        df["date"] = pd.to_datetime(dates)
+    else:
+        df["date"] = df.index
+
+    # Keep only columns we need for clarity
+    df = df[["date", price_col, shares_col]].rename(
+        columns={price_col: "price", shares_col: "shares"}
+    )
+
+    # Infer trades from changes in share holdings
+    df["shares_delta"] = df["shares"].diff().fillna(0)
+
+    # Only rows where a trade actually happened
+    trades_log = df[df["shares_delta"] != 0].copy()
+    trades_log["price_df"] = trades_log["price"]
+
+    # Sort just in case
+    df = df.sort_values("date")
+    trades_log = trades_log.sort_values("date")
+
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Base price series
+    ax.plot(df["date"], df["price"], label=f"{ticker} Price")
+
+    # Trades
+    buys = trades_log[trades_log["shares_delta"] > 0]
+    sells = trades_log[trades_log["shares_delta"] < 0]
+
+    if not buys.empty:
+        ax.scatter(
+            buys["date"],
+            buys["price_df"],
+            marker="^",
+            s=(buys["shares_delta"].abs() * size_scale),
+            label="Buy",
+            c="orange",
+        )
+        for _, row in buys.iterrows():
+            ax.annotate(
+                f"{int(row['shares_delta'])}",
+                (row["date"], row["price_df"]),
+                xytext=(0, 5),
+                textcoords="offset points",
+                ha="center",
+                fontsize=8,
+            )
+
+    if not sells.empty:
+        ax.scatter(
+            sells["date"],
+            sells["price_df"],
+            marker="v",
+            s=(sells["shares_delta"].abs() * size_scale),
+            label="Sell",
+            c="red",
+        )
+        for _, row in sells.iterrows():
+            ax.annotate(
+                f"{int(row['shares_delta'])}",
+                (row["date"], row["price_df"]),
+                xytext=(0, -10),
+                textcoords="offset points",
+                ha="center",
+                fontsize=8,
+            )
+
+    ax.set_xlabel("Date" if dates is not None else "Step")
+    ax.set_ylabel("Price")
+    ax.set_title(f"{ticker} Transactions on Trading Data")
+    ax.legend()
+    ax.grid(True)
+
+    plt.tight_layout()
+
+    return fig, ax
