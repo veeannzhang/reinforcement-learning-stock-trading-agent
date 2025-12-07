@@ -7,19 +7,23 @@ def _print_statistics(
     step: str, 
     warn: bool=False
 ) -> None:
-    """
+    """Prints simple summary statistics about the input DataFrame.
     Arguments
     ----------
         df : pd.DataFrame
         step : str
+            Name of the preprocessing step that produced `df`.
+        warn : bool
+            Toggles warning for missing values.
     """
     nas = df.isna()
     na_count = nas.sum().values[0]
+    na_perc = round(nas.mean().values[0] * 100, 2)
     print(
         f'\tStep: {step}',
         f'Rows: {df.shape[0]}',
         f'NA count: {na_count}', 
-        f'NA %: {nas.mean().round(4).values[0]}',
+        f'NA %: {na_perc}',
         sep=' | '
     )
     if warn and na_count > 0:
@@ -37,8 +41,10 @@ def format_raw_series(
     Arguments
     ----------
         series_id : str
+            FRED series identifier.
         df : pd.DataFrame
         print_std : bool
+            Toggles printing of data stats.
     """
     dt_idx = pd.DatetimeIndex(df['date'])
     df = df.set_index(dt_idx)
@@ -65,6 +71,7 @@ def expand_full_dates(
         freq : str
             the frequency of the series data
         print_std : bool
+            Toggles printing of data stats.
     """
     # get min/max dt from data
     min_dt = df.index.min()
@@ -93,9 +100,8 @@ def impute_missing_data(
     ----------
         col : str
         df : pd.DataFrame
-        method : str
-            Method of imputation.
         print_std : bool
+            Toggles printing of data stats.
     """
     roll_mean = df[col].rolling(window=7, min_periods=1).mean()
     df[col] = df[col].fillna(roll_mean)
