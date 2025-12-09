@@ -37,7 +37,8 @@ class StockTradingEnv(gym.Env):
         hmax: int,
         reward_scaling: float,
         price: str,
-        predictors: list[str],
+        stock_features: list[str],
+        economy_features: list[str],
         window_size: int,
     ):
         super().__init__()
@@ -51,7 +52,8 @@ class StockTradingEnv(gym.Env):
         self.hmax = hmax
         self.reward_scaling = reward_scaling
         self.price = price
-        self.predictors = predictors
+        self.stock_features = stock_features
+        self.economy_features = economy_features
         self.window_size = window_size
 
         self.action_space = gym.spaces.Box(
@@ -103,9 +105,17 @@ class StockTradingEnv(gym.Env):
 
         return prices
     
-    def _get_current_predictors(self) -> np.ndarray:
-        """Returns a flat array of current predictor values."""
-        values = self.df.loc[self.current_step][self.predictors].values.reshape(-1)
+    def _get_current_stock_features(self) -> np.ndarray:
+        """Returns a flat array of current stock features."""
+        values = self.df.loc[self.current_step][self.stock_features].values.reshape(-1)
+
+        return values
+    
+    def _get_current_economy_features(self) -> np.ndarray:
+        """Returns a flat array of current economy features."""
+        values = self.df.loc[self.current_step][self.economy_features].values
+        # get first value (since economy features are the same for all stocks at time t)
+        values = values[0]
 
         return values
     
@@ -126,7 +136,8 @@ class StockTradingEnv(gym.Env):
                 np.array([self.cash]),
                 self._get_current_prices(),
                 self.shares,
-                self._get_current_predictors()
+                self._get_current_stock_features(),
+                self._get_current_economy_features()
             ]
         )
     
