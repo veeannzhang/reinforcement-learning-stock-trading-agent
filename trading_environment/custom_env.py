@@ -2,6 +2,8 @@ import gymnasium as gym
 import numpy as np
 import pandas as pd
 
+from collections import deque
+
 
 TIC_COL = 'tic'
 
@@ -21,6 +23,8 @@ class StockTradingEnv(gym.Env):
         List of predictors of stock prices.
     window_size : int
         Number of previous time steps (including current) to track.
+    integral_trades : bool
+        Forces stock transactions to be integral.
     """
     metadata = {"render_modes": ["human"]}
 
@@ -40,6 +44,7 @@ class StockTradingEnv(gym.Env):
         stock_features: list[str],
         economy_features: list[str],
         window_size: int,
+        integral_trades: bool=False
     ):
         super().__init__()
         self.stock_dim = stock_dim
@@ -55,6 +60,7 @@ class StockTradingEnv(gym.Env):
         self.stock_features = stock_features
         self.economy_features = economy_features
         self.window_size = window_size
+        self.integral_trades = integral_trades
 
         self.action_space = gym.spaces.Box(
             low=-1, 
@@ -75,6 +81,7 @@ class StockTradingEnv(gym.Env):
         self.tic_list = []
         self._terminal_step = None
         self.state_history = None
+        self.full_state_history = None
         self.current_step = 0
         self.cash = self.initial_amount
         self.shares = np.array(self.initial_shares, dtype=np.int64)
@@ -145,17 +152,20 @@ class StockTradingEnv(gym.Env):
         """Returns an array of size (self.window_size, self.state_space)
         that contains data about past and current states.
         """
-        return self.state_history[-self.window_size:].astype(np.float64)
+        return np.array(self.state_history).astype(np.float64)
     
     def _initialize_state(self) -> None:
         """Adds self.window_size rows to state history and
         offsets self.current_step.
         """
-        self.state_history = np.empty((0, self.state_space))
+        self.state_history = deque(maxlen=self.window_size)
+        self.full_state_history = np.empty((0, self.state_space))
         
         for _ in range(self.window_size):
-            state = self._get_current_state().reshape(1,-1)
-            self.state_history = np.concatenate([self.state_history, state], axis=0)
+            state = self._get_current_state()
+            self.state_history.append(state)
+            self.full_state_history = np.concatenate(
+                [self.full_state_history, state.reshape(1,-1)], axis=0)
             self.current_step += 1
 
     def reset(self, *, seed=None, options=None):
@@ -174,7 +184,9 @@ class StockTradingEnv(gym.Env):
     
     def _buy(self, share_idx, action, price):
         cash_available = self.cash
-        shares_to_buy = int(self.hmax * action)
+        shares_to_buy = self.hmax * action
+        if self.integral_trades:
+            shares_to_buy = int(shares_to_buy)
         effective_price = price * (1 + self.buy_cost_pct[share_idx])
 
         if shares_to_buy * effective_price > cash_available:
@@ -189,7 +201,9 @@ class StockTradingEnv(gym.Env):
 
     def _sell(self, share_idx, action, price):
         shares_available = self.shares[share_idx]
-        shares_to_sell = int(self.hmax * (-action))
+        shares_to_sell = self.hmax * (-action)
+        if self.integral_trades:
+            shares_to_sell = int(shares_to_sell)
         effective_price = price * (1 - self.sell_cost_pct[share_idx])
 
         if shares_to_sell > shares_available:
@@ -204,9 +218,10 @@ class StockTradingEnv(gym.Env):
 
     def step(self, actions):
         # log current state
-        current_state = self._get_current_state().reshape(1,-1)
-        self.state_history = np.concatenate(
-            [self.state_history, current_state], axis=0
+        current_state = self._get_current_state()
+        self.state_history.append(current_state)
+        self.full_state_history = np.concatenate(
+            [self.full_state_history, current_state.reshape(1,-1)], axis=0
         )
         current_prices = self._get_current_prices()
         
