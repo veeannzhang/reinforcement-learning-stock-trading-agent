@@ -1,5 +1,5 @@
 import pandas as pd
-
+import numpy as np
 
 def run_backtest(model, env, env_config):
     """Apply the trained model to a trading environment and log actions.
@@ -28,7 +28,7 @@ def run_backtest(model, env, env_config):
     # exclude predictors data
     stock_dim = env_config.get('stock_dim')
     lim = 1 + 2 * stock_dim
-    res = pd.DataFrame(env.state_history[:,:lim])
+    res = pd.DataFrame(np.array(env.state_history)[:,:lim])    
     res.columns = [
         'cash',
         *['price_' + tic for tic in env.tic_list],

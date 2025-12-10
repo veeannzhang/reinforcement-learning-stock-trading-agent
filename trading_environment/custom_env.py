@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 import pandas as pd
-
+from collections import deque
 
 TIC_COL = 'tic'
 
@@ -145,18 +145,29 @@ class StockTradingEnv(gym.Env):
         """Returns an array of size (self.window_size, self.state_space)
         that contains data about past and current states.
         """
-        return self.state_history[-self.window_size:].astype(np.float64)
+        if self.window_size > 1:
+            return np.array(self.state_history).astype(np.float64)
+        else:
+            return np.state_history[-self.window_size:].astype(np.float64)
     
     def _initialize_state(self) -> None:
         """Adds self.window_size rows to state history and
         offsets self.current_step.
         """
-        self.state_history = np.empty((0, self.state_space))
-        
-        for _ in range(self.window_size):
-            state = self._get_current_state().reshape(1,-1)
-            self.state_history = np.concatenate([self.state_history, state], axis=0)
-            self.current_step += 1
+        if self.window_size > 1:
+            self.state_history = deque(maxlen=self.window_size)
+
+            for _ in range(self.window_size):
+                state = self._get_current_state()
+                self.state_history.append(state)
+                self.current_step += 1
+        else:
+            self.state_history = np.empty((0, self.state_space))
+
+            for _ in range(self.window_size):
+                state = self._get_current_state().reshape(1,-1)
+                self.state_history = np.concatenate([self.state_history, state], axis=0)
+                self.current_step += 1
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
@@ -204,10 +215,14 @@ class StockTradingEnv(gym.Env):
 
     def step(self, actions):
         # log current state
-        current_state = self._get_current_state().reshape(1,-1)
-        self.state_history = np.concatenate(
-            [self.state_history, current_state], axis=0
-        )
+        if self.window_size > 1:
+          current_state = self._get_current_state()
+          self.state_history.append(current_state)
+        else:
+            current_state = self._get_current_state().reshape(1,-1)
+            self.state_history = np.concatenate(
+                [self.state_history, current_state], axis=0
+            )
         current_prices = self._get_current_prices()
         
         # execute transactions for each stock
