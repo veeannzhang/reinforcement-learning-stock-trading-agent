@@ -55,4 +55,4 @@ class MultiCondEarlyStop(BaseCallback):
                     )
                 return False
 
-        return True  # keep training
+        return True
