@@ -1,8 +1,10 @@
+from collections import deque
 import gymnasium as gym
 import numpy as np
 import pandas as pd
 
-from collections import deque
+from trading_environment import utils
+
 
 
 TIC_COL = 'tic'
@@ -44,7 +46,8 @@ class StockTradingEnv(gym.Env):
         stock_features: list[str],
         economy_features: list[str],
         window_size: int,
-        integral_trades: bool=False
+        integral_trades: bool=False,
+        starting_step: int=None
     ):
         super().__init__()
         self.stock_dim = stock_dim
@@ -75,13 +78,14 @@ class StockTradingEnv(gym.Env):
             shape=(self.window_size, self.state_space),
             dtype=np.float64
         )
-
+        self._terminal_step = None
         self._df = None
         self.n_tics = None
         self.tic_list = []
-        self._terminal_step = None
+        self.nrow_per_tic = None
         self.state_history = None
         self.full_state_history = None
+        self.starting_step = starting_step
         self.current_step = 0
         self.cash = self.initial_amount
         self.shares = np.array(self.initial_shares, dtype=np.int64)
@@ -100,7 +104,8 @@ class StockTradingEnv(gym.Env):
         self._df = df
         self.tic_list = self._df[TIC_COL].unique().tolist()
         self.n_tics = len(self.tic_list)
-        self._terminal_step = int(self._df.shape[0] / self.n_tics - 1)
+        self.nrow_per_tic = int(self._df.shape[0] / self.n_tics)
+        self._terminal_step = self.nrow_per_tic - 1
 
     @property
     def state(self):
@@ -158,10 +163,17 @@ class StockTradingEnv(gym.Env):
         """Adds self.window_size rows to state history and
         offsets self.current_step.
         """
+        # sample starting step from deciles
+        if not self.starting_step:
+            self.starting_step = utils.random_starting_step(
+                total_steps=self.nrow_per_tic,
+                interval=self.df.shape[0] // 10
+            )
+
         self.state_history = deque(maxlen=self.window_size)
         self.full_state_history = np.empty((0, self.state_space))
         
-        for _ in range(self.window_size):
+        for _ in range(max(self.starting_step, self.window_size)):
             state = self._get_current_state()
             self.state_history.append(state)
             self.full_state_history = np.concatenate(
@@ -170,7 +182,6 @@ class StockTradingEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-
         self.current_step = 0
         self.cash = self.initial_amount
         self.shares = np.array(self.initial_shares, dtype=np.int64)
