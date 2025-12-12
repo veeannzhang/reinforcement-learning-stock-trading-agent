@@ -1,72 +1,49 @@
-import numpy as np
 import pandas as pd
 
 
-def _unwrap_env(env):
+def run_backtest(model, env, env_config, deterministic=True):
     """
-    Unwrap Monitor / TimeLimit / other wrappers until we reach the
-    underlying StockTradingEnv that actually has full_state_history, etc.
-    """
-    # SB3 Monitor and many gym wrappers expose the wrapped env as .env
-    while hasattr(env, "env"):
-        env = env.env
-    return env
-
-
-def run_backtest(model, env, env_config):
-    """
-    Apply the trained model to a trading environment (plain or VecEnv)
-    and log actions.
-
-    Parameters
-    ----------
     model : SB3 model
-        Trained RL model with .predict().
-    env :
-        Trading environment. Can be:
-        - StockTradingEnv (gym.Env-like), or
-        - DummyVecEnv wrapping StockTradingEnv (optionally via Monitor).
-    env_config : dict
-        Configuration containing at least 'stock_dim'.
+    env   : VecNormalize(DummyVecEnv([make_env]))  (what you're already using)
+    env_config : dict with at least {"stock_dim": int}
+
+    Assumes:
+      - Gymnasium-style underlying env, recording `full_state_history`
+      - Underlying env has `tic_list` and `full_state_history` attributes
+      - VecEnv interface:
+          obs = env.reset()
+          obs, reward, terminated, truncated, info = env.step(action)
     """
+    # ----- roll out one full episode on the vectorized env
+    # get underlying env by removing all extra wrappers (Monitor, TimeLimit, etc.)
+    base_env = env.venv.envs[0]
+    while hasattr(base_env, "env"):
+        base_env = base_env.env
+    
+    # initialize
+    obs = env.reset()
+    full_state_history = base_env.full_state_history
 
-    # Detect if this is a VecEnv (e.g. DummyVecEnv)
-    is_vec_env = hasattr(env, "envs")
+    terminated = False
+    while not terminated:
+        action, _ = model.predict(obs, deterministic=deterministic)
+        obs, reward, terminated_arr, info = env.step(action)
+        terminated = bool(terminated_arr[0])
 
-    if is_vec_env:
-        # VecEnv: observations and dones are batched
-        obs = env.reset()              # shape: (n_envs, obs_dim), here n_envs=1
-        done = np.array([False])
+        # copy latest state history
+        # avoid overwriting with reset version (at final while loop)
+        if base_env.full_state_history.shape[0] > full_state_history.shape[0]:
+            full_state_history = base_env.full_state_history
 
-        # We only have one env, so it's env.envs[0]
-        base_env = _unwrap_env(env.envs[0])
+    # ----- build dataframe from rstored state history
+    stock_dim = env_config.get("stock_dim")
+    lim = 1 + 2 * stock_dim  # cash + prices + shares
 
-        while not done[0]:
-            # obs already has batch dimension; model.predict is fine with that
-            actions, _ = model.predict(obs, deterministic=True)
-            obs, rewards, done, infos = env.step(actions)
+    full_state_df = pd.DataFrame(full_state_history[:, :lim])
+    full_state_df.columns = (
+        ["cash"]
+        + [f"price_{tic}" for tic in base_env.tic_list]
+        + [f"shares_{tic}" for tic in base_env.tic_list]
+    )
 
-    else:
-        # Non-vectorized, Gymnasium-style env
-        obs, info = env.reset()
-        terminated = False
-        truncated = False
-
-        base_env = _unwrap_env(env)
-
-        while not (terminated or truncated):
-            actions, _ = model.predict(obs, deterministic=True)
-            obs, reward, terminated, truncated, info = env.step(actions)
-
-    # Build result dataframe from the underlying StockTradingEnv
-    stock_dim = env_config.get('stock_dim')
-    lim = 1 + 2 * stock_dim
-
-    res = pd.DataFrame(base_env.full_state_history[:, :lim])
-    res.columns = [
-        'cash',
-        *[f'price_{tic}' for tic in base_env.tic_list],
-        *[f'shares_{tic}' for tic in base_env.tic_list],
-    ]
-
-    return res
+    return full_state_df
