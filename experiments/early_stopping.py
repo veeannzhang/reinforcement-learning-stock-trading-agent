@@ -30,10 +30,8 @@ class MultiCondEarlyStop(BaseCallback):
             self.latest_losses.append(loss)
             if self.verbose:
                 print(f"[MultiCondEarlyStop] train/loss = {loss:.6f}")
-        return True  # continue, actual stopping decision is in _on_step
-
-    def _on_step(self) -> bool:
-        # ---- 1) Time-based stopping ----
+        
+        # ---- Time-based stopping ----
         if self.max_time_seconds is not None and self.start_time is not None:
             elapsed = time.time() - self.start_time
             if elapsed > self.max_time_seconds:
@@ -41,7 +39,10 @@ class MultiCondEarlyStop(BaseCallback):
                     print(f"\n⏱ Stopping: time limit reached ({elapsed:.1f} s)")
                 return False
 
-        # ---- 2) Loss-based stopping ----
+        return True
+
+    def _on_step(self) -> bool:
+        # ---- Loss-based stopping ----
         if self.loss_threshold is not None and\
             len(self.latest_losses) == self.loss_window:
 
