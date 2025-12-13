@@ -1,33 +1,47 @@
 import pandas as pd
 
 
-def run_backtest(model, env, env_config, deterministic=True):
+def run_backtest(
+        model, 
+        env, 
+        env_config, 
+        deterministic=True
+    ) -> pd.DataFrame:
     """
-    model : SB3 model
-    env   : VecNormalize(DummyVecEnv([make_env]))  (what you're already using)
-    env_config : dict with at least {"stock_dim": int}
+    Arguments:
+    ----------
+        model : SB3 model
+        env   : VecNormalize(DummyVecEnv([make_env]))
+        env_config : dict with at least {"stock_dim": int}
 
-    Assumes:
-      - Gymnasium-style underlying env, recording `full_state_history`
+    Assumptions:
+      - Gymnasium environment, with `full_state_history` attribute
       - Underlying env has `tic_list` and `full_state_history` attributes
       - VecEnv interface:
           obs = env.reset()
           obs, reward, terminated, truncated, info = env.step(action)
     """
-    # ----- roll out one full episode on the vectorized env
+    # ----- rollout one full episode on the vectorized env
     # get underlying env by removing all extra wrappers (Monitor, TimeLimit, etc.)
-    base_env = env.venv.envs[0]
-    while hasattr(base_env, "env"):
-        base_env = base_env.env
+    try:
+        # work-around to accept DummyVecEnv without VecNormalize
+        base_env = env.venv.envs[0]
+        while hasattr(base_env, "env"):
+            base_env = base_env.env
+    except AttributeError:
+        base_env = env.envs[0]
     
     # initialize
     obs = env.reset()
     full_state_history = base_env.full_state_history
+    # store rewards
+    rewards = []
 
     terminated = False
     while not terminated:
         action, _ = model.predict(obs, deterministic=deterministic)
         obs, reward, terminated_arr, info = env.step(action)
+        rewards.append(float(reward[0]))
         terminated = bool(terminated_arr[0])
 
         # copy latest state history
@@ -35,15 +49,17 @@ def run_backtest(model, env, env_config, deterministic=True):
         if base_env.full_state_history.shape[0] > full_state_history.shape[0]:
             full_state_history = base_env.full_state_history
 
-    # ----- build dataframe from rstored state history
+    # ----- build dataframe from stored state history
     stock_dim = env_config.get("stock_dim")
-    lim = 1 + 2 * stock_dim  # cash + prices + shares
-
+    lim = 1 + 2 * stock_dim  # cash + prices x stock_dim + shares x stock_dim
     full_state_df = pd.DataFrame(full_state_history[:, :lim])
     full_state_df.columns = (
         ["cash"]
         + [f"price_{tic}" for tic in base_env.tic_list]
         + [f"shares_{tic}" for tic in base_env.tic_list]
     )
+    # add rewards column
+    full_state_df['reward'] = 0 # initialize column
+    full_state_df.iloc[-len(rewards):, -1] = rewards
 
     return full_state_df
