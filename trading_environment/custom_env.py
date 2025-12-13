@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from trading_environment import utils
+from trading_environment.rewards import RewardFunc
 
 
 
@@ -24,7 +25,8 @@ class StockTradingEnv(gym.Env):
     predictors : list[str]
         List of predictors of stock prices.
     window_size : int
-        Number of previous time steps (including current) to track.
+        Number of time steps (current and lagged) to track.
+        Must be >= 1 (window_size = 1 means only track current state).
     integral_trades : bool
         Forces stock transactions to be integral.
     """
@@ -42,6 +44,7 @@ class StockTradingEnv(gym.Env):
         sell_cost_pct: list[float],
         hmax: int,
         reward_scaling: float,
+        reward_function: RewardFunc,
         price: str,
         stock_features: list[str],
         economy_features: list[str],
@@ -59,6 +62,7 @@ class StockTradingEnv(gym.Env):
         self.sell_cost_pct = sell_cost_pct
         self.hmax = hmax
         self.reward_scaling = reward_scaling
+        self.reward_function = reward_function
         self.price = price
         self.stock_features = stock_features
         self.economy_features = economy_features
@@ -176,13 +180,16 @@ class StockTradingEnv(gym.Env):
         self.state_history = deque(maxlen=self.window_size)
         self.full_state_history = np.empty((0, self.state_space))
         
-        for _ in range(max(self.starting_step, self.window_size)):
+        for _ in range(max(self.starting_step + 1, self.window_size)):
             state = self._get_current_state()
             self.state_history.append(state)
             self.full_state_history = np.concatenate(
                 [self.full_state_history, state.reshape(1,-1)], axis=0)
             self.current_step += 1
-        self.current_step -= 1 # required to log initial state and not create a gap
+
+        # required to log all initial states and not create a gap
+        if self.current_step > 0:
+            self.current_step -= 1
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
@@ -239,7 +246,7 @@ class StockTradingEnv(gym.Env):
     def step(self, actions):
         current_prices = self._get_current_prices()
         
-        # execute transactions for each stock
+        # execute transactions for each stock on current state s_t
         for i,tic in enumerate(self.tic_list):
             action = actions[i]
             price = current_prices[i]
@@ -248,19 +255,20 @@ class StockTradingEnv(gym.Env):
             elif action < 0:
                 self._sell(i, action, price)
 
-        # TO-DO: customize rewards
-        new_total_asset = self._compute_total_asset()
-        reward = (new_total_asset - self.total_asset) * self.reward_scaling
-        self.total_asset = new_total_asset
-
         # update internal state trackers after actions have been committed
+        # i.e. get next state s_t+1
         self.current_step += 1
+        self.total_asset = self._compute_total_asset()
         current_state = self._get_current_state()
         self.state_history.append(current_state)
         self.full_state_history = np.concatenate(
             [self.full_state_history, current_state.reshape(1,-1)], axis=0
         )
+        
+        # calculate reward as a function of {s_t+1, s_t, s_t-1, ...}
+        reward = self.reward_function(self) * self.reward_scaling
 
+        # return next state
         obs = self._get_obs()
         terminated = self.current_step >= self._terminal_step
         truncated = False
