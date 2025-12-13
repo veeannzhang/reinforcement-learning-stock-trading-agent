@@ -1,5 +1,4 @@
 import numpy as np
-from dataclasses import dataclass
 from typing import Protocol
 
 
@@ -78,9 +77,12 @@ class PenalizedTurnover:
         )
         value_per_share_prev = prices_prev * shares_prev
         value_per_share_now = prices_now * shares_now
+        # value per share evaluated at previous prices
+        value_per_share_prev2 = prices_prev * shares_now
 
         # log asset growth
         v_prev = value_per_share_prev.sum() + cash_prev
+        v_prev2 = value_per_share_prev2.sum() + cash_now
         v_now = value_per_share_now.sum() + cash_now
         if v_prev <= 0 or v_now <= 0:
             log_growth = 0.0
@@ -89,7 +91,7 @@ class PenalizedTurnover:
 
         # L2-norm of portfolio & cash change
         w_prev = np.append(value_per_share_prev, cash_prev) / v_prev
-        w_now = np.append(value_per_share_now, cash_now) / v_now
+        w_now = np.append(value_per_share_prev2, cash_now) / v_prev2
         turnover = float(np.linalg.norm(w_now - w_prev, ord=2))
 
         # reward asset growth, penalize portfolio change
