@@ -37,7 +37,7 @@ class RewardFunc(Protocol):
 
 
 class PnLReward:
-    """Calculates change in net asset (cash and portfolio value)"""
+    """Calculates the log change in net asset (cash and portfolio value)"""
 
     def __call__(self, env) -> float:
         hist = env.full_state_history
@@ -50,12 +50,10 @@ class PnLReward:
             hist, t=-1, stock_dim=n_tics
         )
 
-        cash_change = cash_now - cash_prev
-        portfolio_change =\
-            (prices_now * shares_now).sum() - (prices_prev * shares_prev).sum()
-        net_asset_change = cash_change + portfolio_change
+        pnl = np.log((prices_now * shares_now).sum() + cash_now) -\
+            np.log((prices_prev * shares_prev).sum() + cash_prev)
 
-        return net_asset_change
+        return pnl
     
 
 class PenalizedTurnover:
