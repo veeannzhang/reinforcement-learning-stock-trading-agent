@@ -40,7 +40,7 @@ def get_cagr(asset_per_step: np.ndarray, days: int) -> float:
     start_assets = asset_per_step[0]
     end_assets = asset_per_step[-1]
     
-    cagr = (end_assets / start_assets) ** (365 / days) - 1
+    cagr = (end_assets / start_assets) ** (252 / days) - 1
 
     return cagr
 
@@ -50,7 +50,7 @@ def _sharpe_ratio(returns: np.ndarray) -> float:
     mean_r = np.mean(returns)
     std_r = np.std(returns, ddof=1)
 
-    return np.sqrt(365) * mean_r / std_r
+    return np.sqrt(252) * mean_r / std_r
 
 
 def get_sharpe_ratio(asset_per_step: np.ndarray) -> float:
@@ -64,7 +64,7 @@ def get_volatility(asset_per_step: np.ndarray) -> float:
     """Calculate volatility in returns"""
     returns_per_step = asset_per_step[1:] / asset_per_step[:-1] - 1
 
-    return np.sqrt(365) * np.std(returns_per_step, ddof=1)
+    return np.sqrt(252) * np.std(returns_per_step, ddof=1)
 
     
 def get_var(asset_per_step: np.ndarray, alpha=0.05) -> float:
