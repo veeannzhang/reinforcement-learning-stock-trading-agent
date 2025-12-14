@@ -2,13 +2,30 @@ import numpy as np
 
 
 def simulate_series(
-    T=500,
-    trend_constant=100,
-    trend_slope=0.01,
-    amp=3,
-    period=100,
-    noise_std=1,
+    T: int=500,
+    trend_constant: float=100.0,
+    trend_slope: float=0.01,
+    amp: float=3.0,
+    period: int=100,
+    noise_std: float=1.0,
 ):
+    """Simulates a linear trend with cosine seasonality.
+
+    Arguments:
+    ----------
+        T : int
+            Number of time steps.
+        trend_constant : int
+            Constant component of linear trend.
+        trend_slope : int
+            Slope of linear trend.
+        amp : float
+            Amplitude of cosine.
+        period : int
+            Period of cosine.
+        noise_std : float
+            Standard deviation of random Gaussian noise.
+    """
     time_idx = np.arange(T)
 
     # simulate price components

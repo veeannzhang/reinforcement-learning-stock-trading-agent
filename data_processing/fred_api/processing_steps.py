@@ -7,7 +7,7 @@ def _print_statistics(
     step: str, 
     warn: bool=False
 ) -> None:
-    """Prints simple summary statistics about the input DataFrame.
+    """Prints simple statistics about missing values in the input DataFrame.
     Arguments
     ----------
         df : pd.DataFrame
@@ -38,7 +38,8 @@ def format_raw_series(
 ) -> pd.DataFrame:
     """Sets index and column names to the raw data returned by
     the FRED API .get_series() method.
-    Arguments
+
+    Arguments:
     ----------
         series_id : str
             FRED series identifier.
@@ -65,11 +66,12 @@ def expand_full_dates(
     """Maps the data to the full range of dates between
     the min. and max. dates, at the given frequency.
     May generate NAs if a date did not have a value.
-    Arguments
+
+    Arguments:
     ----------
         df : pd.DataFrame
         freq : str
-            the frequency of the series data
+            the frequency of the series data (e.g. 'MS', 'D')
         print_std : bool
             Toggles printing of data stats.
     """
@@ -96,9 +98,11 @@ def impute_missing_data(
 ) -> pd.DataFrame:
     """Imputes missing data using the rolling mean method,
     with a window size of 7.
-    Arguments
+
+    Arguments:
     ----------
         col : str
+            Name of column to apply imputation on.
         df : pd.DataFrame
         print_std : bool
             Toggles printing of data stats.

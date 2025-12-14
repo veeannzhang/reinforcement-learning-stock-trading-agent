@@ -7,7 +7,8 @@ def random_starting_step(
         seed : int=None
     ):
     """Returns a random starting step number by uniformly sampling from
-    {0, interval * 1, interval * 2, ..., total_steps - interval}
+    the values {0, interval * 1, interval * 2, ..., total_steps - interval}
+    
     Arguments:
     ---------
         total_steps : int

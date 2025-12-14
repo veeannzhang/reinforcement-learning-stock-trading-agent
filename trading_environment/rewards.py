@@ -57,7 +57,7 @@ class PnLReward:
     
 
 class PenalizedTurnover:
-    """Penalizes large asset changes, rewards asset growth.
+    """Penalizes large asset changes (turnover), rewards asset growth.
     Assumption: NO SHORTING
     """
     def __init__(self, penalty: float):

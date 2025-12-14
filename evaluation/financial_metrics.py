@@ -26,7 +26,13 @@ def net_asset_change(df: pd.DataFrame):
 
 
 def get_total_return(asset_per_step: np.ndarray) -> float:
-    """Calculate total return"""
+    """Calculate total return.
+
+    Arguments:
+    ----------
+        asset_per_step: np.ndarray
+            Total asset value at each time step.
+    """
     start_assets = asset_per_step[0]
     end_assets = asset_per_step[-1]
     
@@ -36,7 +42,15 @@ def get_total_return(asset_per_step: np.ndarray) -> float:
 
 
 def get_cagr(asset_per_step: np.ndarray, days: int) -> float:
-    """Calculate CAGR"""
+    """Calculate Compound Annual Growth Rate (CAGR).
+
+    Arguments:
+    ----------
+        asset_per_step: np.ndarray
+            Total asset value at each time step.
+        days : int
+            The number of days in the investment horizon.
+    """
     start_assets = asset_per_step[0]
     end_assets = asset_per_step[-1]
     
@@ -46,7 +60,13 @@ def get_cagr(asset_per_step: np.ndarray, days: int) -> float:
 
 
 def _sharpe_ratio(returns: np.ndarray) -> float:
-    """Calculates Sharpe ratio on an array of returns"""
+    """Calculates the Sharpe ratio.
+
+    Arguments:
+    ----------
+        returns: np.ndarray
+            Returns at each time step: (V_t+1 / V_t) - 1
+    """
     mean_r = np.mean(returns)
     std_r = np.std(returns, ddof=1)
 
@@ -54,21 +74,40 @@ def _sharpe_ratio(returns: np.ndarray) -> float:
 
 
 def get_sharpe_ratio(asset_per_step: np.ndarray) -> float:
-    """Calculate Sharpe Ratio"""
+    """Calculate the Sharpe ratio.
+
+    Arguments:
+    ----------
+        asset_per_step: np.ndarray
+            Total asset value at each time step.
+    """
     returns_per_step = asset_per_step[1:] / asset_per_step[:-1] - 1
 
     return _sharpe_ratio(returns_per_step)
 
 
 def get_volatility(asset_per_step: np.ndarray) -> float:
-    """Calculate volatility in returns"""
+    """Calculate volatility in returns.
+
+    Arguments:
+    ----------
+        asset_per_step: np.ndarray
+            Total asset value at each time step.
+    """
     returns_per_step = asset_per_step[1:] / asset_per_step[:-1] - 1
 
     return np.sqrt(252) * np.std(returns_per_step, ddof=1)
 
     
-def get_var(asset_per_step: np.ndarray, alpha=0.05) -> float:
-    """Calculate Value-at-Risk (VaR)"""
+def get_var(asset_per_step: np.ndarray, alpha: float=0.05) -> float:
+    """Calculate Value-at-Risk (VaR).
+
+    Arguments:
+    ----------
+        asset_per_step: np.ndarray
+            Total asset value at each time step.
+        alpha : float
+    """
     r = asset_per_step[1:] / asset_per_step[:-1] - 1
 
     return -np.quantile(r, alpha)
@@ -79,7 +118,16 @@ def get_turnover(
         prices: np.ndarray,
         shares: np.ndarray
     ) -> float:
-    """Calculate turnover"""
+    """Calculate turnover.
+
+    Arguments:
+    ----------
+        cash : np.ndarray
+            flat array of cash values at each time step.
+        prices / shares: np.ndarray
+            2D array of prices / shares at each time step (dim 0)
+            for each stock (dim 1)
+    """
     asset_per_step = cash + (prices * shares).sum(axis=1)
     w = (prices * shares) / asset_per_step[:, None]
 
@@ -87,7 +135,8 @@ def get_turnover(
 
 
 def financial_performance(transactions_df: pd.DataFrame) -> dict:
-    """Returns a set of financial performance metrics
+    """Returns a set of financial performance metrics.
+    
     Arguments:
     ----------
         transactions_df : pd.DataFrame

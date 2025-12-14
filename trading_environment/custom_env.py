@@ -8,12 +8,15 @@ from trading_environment.rewards import RewardFunc
 
 
 
-TIC_COL = 'tic'
+TIC_COL = 'tic' # column that contains stock ticker labels
 
 
 class StockTradingEnv(gym.Env):
     """A custom implementation of a stock trading environment.
-        - step() returns current data and past data from a window.
+    Key design elements:
+        - step() returns current data and past data from a fixed-length window.
+        - state_history attribute tracks state histories from a past window.
+        - full_state_history attribute tracks the entire state history.
 
     Parameters
     ----------
@@ -21,14 +24,42 @@ class StockTradingEnv(gym.Env):
         Contains stock prices and predictor data.
         Must be sorted by date (ascending) and stock ticker.
         Must have a 1:1 mapping between DataFrame Index values and date.
+            E.g. Index = 0 maps only to date = '2021-10-30' and vice-versa.
         Index values must be Integer type.
-    predictors : list[str]
-        List of predictors of stock prices.
+    stock_dim: int
+        The number of unique stock tickers that can be traded.
+    state_space: int
+        1 + 2 * stock_dim + len(stock_features) * stock_dim + len(economy_features)
+    action_space: int
+        stock_dim
+    initial_amount: float
+        Amount of starting cash.
+    num_stock_shares: list[int]
+        Initial number of shares for each stock in the portfolio.
+    buy_cost_pct: list[float]
+        The purchase cost percentage for each stock.
+    sell_cost_pct: list[float]
+        The sale cost percentage for each stock.
+    hmax : int
+        The maximum number of shares that can be traded for each stock at each time step.
+    reward_scaling : float
+        A constant to scale the reward signal.
+    reward_function: RewardFunc
+        A reward function protocol that calculates reward signals at each time step.
+    price : str
+        The column name containing prices used to calculate rewards.
+    stock_features : list[str]
+        List of features that are specific to each stock.
+    economy_features : list[str]
+        List of macroeconomic features shared by all stocks.
     window_size : int
         Number of time steps (current and lagged) to track.
         Must be >= 1 (window_size = 1 means only track current state).
     integral_trades : bool
         Forces stock transactions to be integral.
+    starting_step : int
+        If None, randomizes the starting step by uniformly sampling
+        from the deciles of the time steps in the environment's data.
     """
     metadata = {"render_modes": ["human"]}
 
@@ -38,7 +69,7 @@ class StockTradingEnv(gym.Env):
         stock_dim: int,
         state_space: int,
         action_space: int,
-        initial_amount: int,
+        initial_amount: float,
         num_stock_shares: list[int],
         buy_cost_pct: list[float],
         sell_cost_pct: list[float],

@@ -2,13 +2,14 @@ import pandas as pd
 
 
 def get_indices_of_first_datapoint(na_df: pd.DataFrame) -> pd.DataFrame:
-    """Returns the index identifying the first non-null data point
-    of each column in a DataFrame.
+    """Returns a summary table that shows the indices that 
+    identifies the first non-null data point of each column in a DataFrame.
 
     Arguments:
     ----------
         na_df : pd.DataFrame
-            result of df.isna() - True for NA value, False otherwise.
+            result of df.isna() - each value is True for NA value 
+            in the original df, False otherwise.
     """
     # get iloc of first datapoint for each column
     first_datapoint_iloc = (
