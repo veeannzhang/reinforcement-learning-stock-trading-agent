@@ -1,8 +1,11 @@
+from collections import deque
 import gymnasium as gym
 import numpy as np
 import pandas as pd
 
-from collections import deque
+from trading_environment import utils
+from trading_environment.rewards import RewardFunc
+
 
 
 TIC_COL = 'tic'
@@ -22,7 +25,8 @@ class StockTradingEnv(gym.Env):
     predictors : list[str]
         List of predictors of stock prices.
     window_size : int
-        Number of previous time steps (including current) to track.
+        Number of time steps (current and lagged) to track.
+        Must be >= 1 (window_size = 1 means only track current state).
     integral_trades : bool
         Forces stock transactions to be integral.
     """
@@ -40,11 +44,13 @@ class StockTradingEnv(gym.Env):
         sell_cost_pct: list[float],
         hmax: int,
         reward_scaling: float,
+        reward_function: RewardFunc,
         price: str,
         stock_features: list[str],
         economy_features: list[str],
         window_size: int,
-        integral_trades: bool=False
+        integral_trades: bool=False,
+        starting_step: int=None
     ):
         super().__init__()
         self.stock_dim = stock_dim
@@ -56,6 +62,7 @@ class StockTradingEnv(gym.Env):
         self.sell_cost_pct = sell_cost_pct
         self.hmax = hmax
         self.reward_scaling = reward_scaling
+        self.reward_function = reward_function
         self.price = price
         self.stock_features = stock_features
         self.economy_features = economy_features
@@ -75,16 +82,20 @@ class StockTradingEnv(gym.Env):
             shape=(self.window_size, self.state_space),
             dtype=np.float64
         )
-
+        self._terminal_step = None
         self._df = None
         self.n_tics = None
         self.tic_list = []
-        self._terminal_step = None
+        self.nrow_per_tic = None
         self.state_history = None
         self.full_state_history = None
+        self.starting_step = starting_step
         self.current_step = 0
         self.cash = self.initial_amount
-        self.shares = np.array(self.initial_shares, dtype=np.int64)
+        self.shares = np.array(
+            self.initial_shares, 
+            dtype=np.int64 if integral_trades else np.float64
+        )
 
         self.df = df
         self._initialize_state()
@@ -100,7 +111,8 @@ class StockTradingEnv(gym.Env):
         self._df = df
         self.tic_list = self._df[TIC_COL].unique().tolist()
         self.n_tics = len(self.tic_list)
-        self._terminal_step = int(self._df.shape[0] / self.n_tics - 1)
+        self.nrow_per_tic = int(self._df.shape[0] / self.n_tics)
+        self._terminal_step = self.nrow_per_tic - 1
 
     @property
     def state(self):
@@ -158,22 +170,35 @@ class StockTradingEnv(gym.Env):
         """Adds self.window_size rows to state history and
         offsets self.current_step.
         """
+        # sample starting step from deciles
+        if self.starting_step is None:
+            self.starting_step = utils.random_starting_step(
+                total_steps=self.nrow_per_tic,
+                interval=self.df.shape[0] // 10
+            )
+
         self.state_history = deque(maxlen=self.window_size)
         self.full_state_history = np.empty((0, self.state_space))
         
-        for _ in range(self.window_size):
+        for _ in range(max(self.starting_step + 1, self.window_size)):
             state = self._get_current_state()
             self.state_history.append(state)
             self.full_state_history = np.concatenate(
                 [self.full_state_history, state.reshape(1,-1)], axis=0)
             self.current_step += 1
 
+        # required to log all initial states and not create a gap
+        if self.current_step > 0:
+            self.current_step -= 1
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-
         self.current_step = 0
         self.cash = self.initial_amount
-        self.shares = np.array(self.initial_shares, dtype=np.int64)
+        self.shares = np.array(
+            self.initial_shares, 
+            dtype=np.int64 if self.integral_trades else np.float64
+        )
         self.total_asset = self._compute_total_asset()
         self._initialize_state()
 
@@ -191,9 +216,11 @@ class StockTradingEnv(gym.Env):
 
         if shares_to_buy * effective_price > cash_available:
             # clip to maximum shares affordable
-            shares_bought = int(cash_available / effective_price)
+            shares_bought = cash_available / effective_price
         else:
             shares_bought = shares_to_buy
+        if self.integral_trades:
+            shares_bought = int(shares_bought)
 
         # update states
         self.cash -= shares_bought * effective_price
@@ -217,15 +244,9 @@ class StockTradingEnv(gym.Env):
         self.shares[share_idx] -= shares_sold
 
     def step(self, actions):
-        # log current state
-        current_state = self._get_current_state()
-        self.state_history.append(current_state)
-        self.full_state_history = np.concatenate(
-            [self.full_state_history, current_state.reshape(1,-1)], axis=0
-        )
         current_prices = self._get_current_prices()
         
-        # execute transactions for each stock
+        # execute transactions for each stock on current state s_t
         for i,tic in enumerate(self.tic_list):
             action = actions[i]
             price = current_prices[i]
@@ -234,14 +255,22 @@ class StockTradingEnv(gym.Env):
             elif action < 0:
                 self._sell(i, action, price)
 
-        # TO-DO: customize rewards
-        new_total_asset = self._compute_total_asset()
-        reward = (new_total_asset - self.total_asset) * self.reward_scaling
-        self.total_asset = new_total_asset
-
+        # update internal state trackers after actions have been committed
+        # i.e. get next state s_t+1
         self.current_step += 1
+        self.total_asset = self._compute_total_asset()
+        current_state = self._get_current_state()
+        self.state_history.append(current_state)
+        self.full_state_history = np.concatenate(
+            [self.full_state_history, current_state.reshape(1,-1)], axis=0
+        )
+        
+        # calculate reward as a function of {s_t+1, s_t, s_t-1, ...}
+        reward = self.reward_function(self) * self.reward_scaling
+
+        # return next state
         obs = self._get_obs()
-        terminated = self.current_step > self._terminal_step
+        terminated = self.current_step >= self._terminal_step
         truncated = False
         info = {
             "cash": self.cash,
