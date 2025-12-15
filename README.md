@@ -44,3 +44,9 @@ This notebook serves the following purposes:
 
 ## pipeline_09_training_diagnostics.ipynb
 - This notebook performs qualitative diagnostics of the learning process by visualizing statistics accumulated during training.
+
+## pipeline_10_base_mode_VIX_Study.ipynb
+- Runs VIX analysis for the base model.
+
+## pipeline_11_Mamba_PPO_VIX_Study.ipynb
+- Runs VIX analysis for the Mamba model.
