@@ -1,0 +1,3 @@
+mamba_ppo_20251214_2038_1 -> mamba_penalized_0.005
+mlp_recur_ppo_20251214_2343_1 -> base_penalized_0.005
+mlp_recur_ppo_20251214_2353_1 -> base_pnl
